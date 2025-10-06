@@ -161,16 +161,15 @@ Mode: AUTO
 
 ## 📎 Example Status Object
 
-```json
 {
-"relays": [1, 1, 0],
-"soc": 74,
-"batteryPower": 2200,
-"boilerTemp": 37,
-"inverterLoad": 3400,
-"manualOverride": false,
-"mode": "AUTO",
-"lastChange": "2025-10-06T13:42:10Z"
+  "relays": [1, 1, 0],
+  "soc": 74,
+  "batteryPower": 2200,
+  "boilerTemp": 37,
+  "inverterLoad": 3400,
+  "manualOverride": false,
+  "mode": "AUTO",
+  "lastChange": "2025-10-06T13:42:10Z"
 }
 
 
