@@ -160,7 +160,7 @@ Mode: AUTO
 ---
 
 ## 📎 Example Status Object
-
+```json
 {
   "relays": [1, 1, 0],
   "soc": 74,
@@ -171,12 +171,13 @@ Mode: AUTO
   "mode": "AUTO",
   "lastChange": "2025-10-06T13:42:10Z"
 }
-
+```
 
 ⸻
 
 🧩 Known Good Defaults
 
+```json
 {
   "onThreshold": 1000,
   "offThreshold": -1000,
@@ -189,7 +190,7 @@ Mode: AUTO
   "manualTimeoutSec": 600,
   "statusMinIntervalSec": 5
 }
-
+```
 
 ⸻
 
