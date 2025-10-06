@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Victron 3-Phase Heater Controller Configuration Schema",
+  "description": "Defines configurable parameters for Node-RED function node logic controlling 3-phase heating relays based on Victron VE.Bus data.",
+  "type": "object",
+  "properties": {
+    "onThreshold": {
+      "type": "number",
+      "default": 1000,
+      "minimum": 100,
+      "maximum": 5000,
+      "description": "Battery power threshold (W) above which heating starts (PV surplus)."
+    },
+    "offThreshold": {
+      "type": "number",
+      "default": -1000,
+      "minimum": -5000,
+      "maximum": -100,
+      "description": "Battery power threshold (W) below which heating stops (discharge protection)."
+    },
+    "minSoc": {
+      "type": "number",
+      "default": 70,
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Minimum State of Charge (%) required to allow heating."
+    },
+    "boilerTempMax": {
+      "type": "number",
+      "default": 40,
+      "minimum": 20,
+      "maximum": 90,
+      "description": "Maximum boiler temperature (°C) before all relays turn off."
+    },
+    "inverterLoadMax": {
+      "type": "number",
+      "default": 5000,
+      "minimum": 1000,
+      "maximum": 10000,
+      "description": "Maximum inverter load (W) above which heating will not start."
+    },
+    "minOnSec": {
+      "type": "integer",
+      "default": 60,
+      "minimum": 5,
+      "maximum": 600,
+      "description": "Minimum time (seconds) a relay must stay ON before it can switch OFF."
+    },
+    "minOffSec": {
+      "type": "integer",
+      "default": 60,
+      "minimum": 5,
+      "maximum": 600,
+      "description": "Minimum time (seconds) a relay must stay OFF before it can switch ON."
+    },
+    "minAnyChangeSec": {
+      "type": "integer",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 300,
+      "description": "Minimum delay (seconds) between any two relay state changes."
+    },
+    "statusMinIntervalSec": {
+      "type": "integer",
+      "default": 5,
+      "minimum": 1,
+      "maximum": 120,
+      "description": "Minimum interval (seconds) for sending status updates to the dashboard or MQTT."
+    },
+    "manualTimeoutSec": {
+      "type": "integer",
+      "default": 600,
+      "minimum": 10,
+      "maximum": 7200,
+      "description": "Timeout (seconds) after which manual override will automatically reset to AUTO."
+    },
+    "sunriseTime": {
+      "type": "string",
+      "default": "06:00",
+      "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+      "description": "Start of heating time window (HH:mm, 24h format)."
+    },
+    "sunsetTime": {
+      "type": "string",
+      "default": "20:00",
+      "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+      "description": "End of heating time window (HH:mm, 24h format)."
+    },
+    "manualOverride": {
+      "type": "boolean",
+      "default": false,
+      "description": "Global manual override. When true, all relays are forced ON."
+    }
+  },
+  "required": [
+    "onThreshold",
+    "offThreshold",
+    "minSoc",
+    "boilerTempMax",
+    "inverterLoadMax"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "onThreshold": 1200,
+      "offThreshold": -800,
+      "minSoc": 75,
+      "boilerTempMax": 45,
+      "inverterLoadMax": 5500,
+      "minOnSec": 90,
+      "minOffSec": 90,
+      "minAnyChangeSec": 15,
+      "statusMinIntervalSec": 5,
+      "manualTimeoutSec": 600,
+      "sunriseTime": "06:30",
+      "sunsetTime": "19:45",
+      "manualOverride": false
+    }
+  ]
+}

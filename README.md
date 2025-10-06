@@ -24,7 +24,7 @@ It intelligently uses **excess PV energy** to heat water while protecting the in
 ---
 
 ## 🧩 System Architecture
-
+```
 [Victron VE.Bus Inputs] ──► [Heater Controller Function Node]
 │
 ├─ Battery Power
@@ -44,6 +44,7 @@ Outputs:
 /Relay/1/State  → L2
 /Relay/2/State  → L3
 /Heater/Status  → status object
+```
 
 ---
 
@@ -111,13 +112,13 @@ Values adjustable at runtime via Dashboard → Heater Control tab.
 ## 🔍 Debug & Monitoring
 - **Debug Node** (connected to status output): shows object with live state.
 - **Dashboard → Heater Monitor:** displays
-
-SOC: 74 %
-Boiler Temp: 38 °C
-Inverter Load: 3400 W
-Relays: [1, 1, 0]
-Mode: AUTO
-
+```
+  SOC: 74 %
+  Boiler Temp: 38 °C
+  Inverter Load: 3400 W
+  Relays: [1, 1, 0]
+  Mode: AUTO
+```
 - Manual override turns mode to `MANUAL: FORCE ON`.
 
 ---
@@ -190,14 +191,12 @@ Mode: AUTO
 ⸻
 
 ### 🏁 Credits
-
-Developed collaboratively in 2025-10 by Code Copilot & Larry0t (Victron & Node-RED enthusiast).
+Developed collaboratively in 2025-10 by Code Copilot & Larry0t (Victron & Node-RED enthusiast).  
 Optimized for VE.Bus relay control, safe PV surplus management, and extendable logic (multiple heaters, EV chargers, etc.).
 
 ⸻
 
 ### 📂 Files
-
 	•	heater-controller-flow.json — Node-RED importable flow
 	•	heater-controller-diagram.svg — visual diagram of system architecture
 	•	README.md — this documentation
