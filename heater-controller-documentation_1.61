@@ -1,7 +1,7 @@
 Complete development analysis + visual documentation for your Victron-based 3-Phase Heater Controller (Node-RED implementation).
 It includes a flow diagram, technical structure, and logic walkthrough — suitable for project documentation or engineering handover.
 
-Version 1.61; 
+Version 1.61;
 
 ⸻
 
@@ -176,5 +176,3 @@ This Node-RED implementation is production-grade:
 	•	Easy to integrate with Victron VE.Bus relays and sensors
 
 ⸻
-
-Would you like me to generate a visual SVG diagram (exportable for documentation or technical drawings) that shows the flow boxes and connections like a real Node-RED schematic?
