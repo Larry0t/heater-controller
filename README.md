@@ -195,10 +195,3 @@ Developed collaboratively in 2025-10 by Code Copilot & Larry0t (Victron & Node-R
 Optimized for VE.Bus relay control, safe PV surplus management, and extendable logic (multiple heaters, EV chargers, etc.).
 
 ⸻
-
-### 📂 Files
-	•	heater-controller-flow.json — Node-RED importable flow
-	•	heater-controller-diagram.svg — visual diagram of system architecture
-	•	README.md — this documentation
-
----
