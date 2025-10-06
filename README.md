@@ -1,8 +1,3 @@
-README.md — concise, structured, and ready for your repository or internal documentation.
-It summarizes the purpose, setup, configuration, and operation of your Victron 3-Phase Heater Controller for Node-RED.
-
-⸻
-
 
 # 🔥 Victron 3-Phase Heater Controller — Node-RED
 
