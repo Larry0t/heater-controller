@@ -1,0 +1,180 @@
+Complete development analysis + visual documentation for your Victron-based 3-Phase Heater Controller (Node-RED implementation).
+It includes a flow diagram, technical structure, and logic walkthrough — suitable for project documentation or engineering handover.
+
+Version 1.61; 
+
+⸻
+
+🧠 System Analysis & Documentation
+
+Project: Victron Energy 3-Phase Heater Controller (Node-RED)
+
+🎯 Purpose
+
+Control three independent heating relays (L1, L2, L3) based on Victron Energy data — battery charge/discharge power, SOC, temperature, and inverter load — to consume excess PV energy efficiently and safely.
+
+⸻
+
+⚙️ Functional Overview
+
+Feature	Description
+Multi-phase Control	Drives 3 relays, one per AC line (L1, L2, L3).
+Battery Power Logic	Relay ON when battery charging (> +1000 W), OFF when discharging (< –1000 W).
+Hysteresis	Flat hysteresis thresholds ±1000 W prevent rapid toggling.
+Progressive Switching	Adds or removes only one relay at a time: lowest load ON, highest load OFF.
+SOC Guard	Heating allowed only when battery SOC ≥ min SOC (default 70 %).
+Boiler Temperature Limit	Heating OFF when boiler > 40 °C.
+Inverter Load Guard	Heating not started if inverter output > 5000 W.
+Sunrise/Sunset Window	Heating allowed only during daylight.
+Manual Override	Dashboard switch: force all relays ON (manual mode).
+Failsafe Timer	Enforces min ON/OFF durations (60 s default).
+Cooldown Between Steps	Delay between progressive relay activations (10 s default).
+Throttled Status Output	Status messages limited (default every 5 s or on change).
+Runtime Dashboard Config	Editable thresholds and limits from UI without redeploy.
+
+
+⸻
+
+🧩 Node-RED Architecture (Data Flow Diagram)
+
+┌────────────────────────────────────────────────────────────┐
+│                        VICRON INPUTS                       │
+│  ┌──────────────┬──────────────┬──────────────┐            │
+│  │Battery Power │Battery SOC   │AC Loads L1-L3│            │
+│  └─────┬────────┴─────┬────────┴─────┬────────┘            │
+│        │              │              │                     │
+│        ▼              ▼              ▼                     │
+│              ┌────────────────────┐                        │
+│              │  Heater Controller │◄──── Boiler Temp,      │
+│              │  (Function Node)   │     Inverter Load,     │
+│              └────────────────────┘     Sunrise/Sunset     │
+│                 ▲      ▲        ▲                           │
+│                 │      │        │                           │
+│        Manual Override│        Config Form (UI)             │
+│        (UI Switch)    │        (/Heater/Config)             │
+│                       │                                    │
+│                 ┌──────┴──────┐                            │
+│                 │Victron Relays│                           │
+│                 │L1 / L2 / L3  │                           │
+│                 └──────┬───────┘                            │
+│                        │                                    │
+│                 ┌──────▼─────────┐                          │
+│                 │Dashboard Status│                          │
+│                 │+ Debug Output  │                          │
+│                 └────────────────┘                          │
+└────────────────────────────────────────────────────────────┘
+
+
+⸻
+
+🧩 Main Logic Sequence
+
+1️⃣ Input Collection
+
+Collect real-time data:
+
+batteryPower, soc, L1, L2, L3, boilerTemp, inverterLoad, sunrise, sunset
+
+2️⃣ Evaluation Conditions
+	•	Outside daylight → HEAT_OFF
+	•	Boiler > limit → HEAT_OFF
+	•	SOC < limit → HEAT_OFF
+	•	Inverter > limit → HEAT_OFF
+	•	Battery > onThreshold → HEAT_ON
+	•	Battery < offThreshold → HEAT_OFF
+
+3️⃣ Manual Override
+
+If manualOverride = true → force [1, 1, 1] (all relays ON) and skip logic.
+
+4️⃣ Progressive Switching
+	•	If HEAT_ON: activate the lowest-load OFF relay (if min off time passed).
+	•	If HEAT_OFF: deactivate the highest-load ON relay (if min on time passed).
+
+5️⃣ Output Filtering
+
+Emit new relay states only if changed or throttle interval exceeded.
+
+6️⃣ Dashboard Updates
+
+Send statusMsg with:
+
+{ relays, soc, boilerTemp, inverterLoad, manualOverride, lastChange }
+
+Displayed in dashboard panel and Debug node.
+
+⸻
+
+⚙️ Configurable Parameters (via Dashboard Form)
+
+Parameter	Default	Description
+onThreshold	+1000 W	Power to begin heating
+offThreshold	–1000 W	Power to stop heating
+minSoc	70 %	Minimum SOC for heating
+boilerTempMax	40 °C	Stop heating above this temperature
+inverterLoadMax	5000 W	Don’t start heating above this load
+minOnTime	60000 ms	Relay must stay ON this long
+minOffTime	60000 ms	Relay must stay OFF this long
+cooldownTime	10000 ms	Delay between progressive steps
+statusThrottle	5000 ms	Minimum interval between status updates
+
+
+⸻
+
+🧱 Dashboard Layout
+
+Tab	Element	Function
+Heater Control	Config Form	Adjust thresholds + limits
+Heater Monitor	Status Panel	Shows live data and mode
+Heater Monitor	Manual Override Switch	Force all relays ON
+
+
+⸻
+
+📡 Relay Output Topics
+
+Relay	Victron Path
+Relay 1	/Relay/0/State
+Relay 2	/Relay/1/State
+Relay 3	/Relay/2/State
+
+Each outputs payload = 0/1 for OFF/ON.
+
+⸻
+
+🧩 Key Code Design Notes
+	•	State stored in context: ensures persistence across cycles.
+	•	One relay change per run: avoids multi-relay toggling spikes.
+	•	Time-based hysteresis: prevents chattering under power fluctuation.
+	•	Throttle and failsafe timers maintain stability and safety.
+	•	Manual override prioritizes operator control.
+
+⸻
+
+🧪 Suggested Tests
+
+Test Case	Expected Behavior
+Battery > 1000 W	One relay turns ON progressively
+Battery < –1000 W	One relay turns OFF progressively
+Boiler > 40 °C	All relays OFF
+SOC < 70 %	No relay ON
+Inverter > 5000 W	Heating OFF
+Manual Override ON	All relays ON instantly
+Manual Override OFF	Logic resumes automatically
+Dashboard config change	New thresholds apply immediately
+
+
+⸻
+
+📘 Summary
+
+This Node-RED implementation is production-grade:
+	•	Modular & readable
+	•	Safe under fluctuating PV loads
+	•	Fully configurable from UI
+	•	Non-intrusive manual control
+	•	Easy to integrate with Victron VE.Bus relays and sensors
+
+⸻
+
+Would you like me to generate a visual SVG diagram (exportable for documentation or technical drawings) that shows the flow boxes and connections like a real Node-RED schematic?

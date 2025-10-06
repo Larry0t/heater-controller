@@ -1,0 +1,226 @@
+[
+  {
+    "id": "flow1",
+    "type": "tab",
+    "label": "Three-Phase Heater Controller",
+    "disabled": false,
+    "info": "Victron-based 3-phase heater controller with PV logic, SOC, hysteresis, boiler temperature, inverter load, manual override, and dashboard configuration."
+  },
+  {
+    "id": "f1_controller",
+    "type": "function",
+    "z": "flow1",
+    "name": "Heater Controller",
+    "func": "// === CONFIGURABLE DEFAULTS ===\nconst defaults = {\n    onThreshold: 1000,\n    offThreshold: -1000,\n    minSoc: 70,\n    boilerTempMax: 40,\n    inverterLoadMax: 5000,\n    minOnTime: 60000,\n    minOffTime: 60000,\n    cooldownTime: 10000,\n    statusThrottle: 5000\n};\n\nlet st = context.get('st') || {\n    relays: [0, 0, 0],\n    lastChange: Date.now(),\n    lastOnTimes: [0, 0, 0],\n    lastOffTimes: [0, 0, 0],\n    lastDir: null,\n    lastStatusTime: 0\n};\nlet cfg = context.get('cfg') || defaults;\nlet ctx = context.get('ctx') || { manualOverride: false };\nlet changed = false;\n\n// === HANDLE CONFIG UPDATE ===\nif (msg.topic === \"/Heater/Config\") {\n    cfg = { ...cfg, ...msg.payload };\n    context.set('cfg', cfg);\n    node.status({ fill: 'green', shape: 'dot', text: 'Config updated' });\n    return [null, null, null, { cfg }];\n}\n\n// === HANDLE MANUAL OVERRIDE ===\nif (msg.topic === \"/Heater/Manual\") {\n    ctx.manualOverride = msg.payload === 1;\n    context.set('ctx', ctx);\n    node.status({ fill: ctx.manualOverride ? 'yellow' : 'green', shape: 'dot', text: ctx.manualOverride ? 'MANUAL: FORCE ON' : 'AUTO' });\n    return [null, null, null, { manualOverride: ctx.manualOverride }];\n}\n\n// === HANDLE INPUTS ===\nif (typeof msg.payload !== 'object') return;\nconst data = msg.payload;\nconst now = Date.now();\n\nconst batteryPower = data.batteryPower ?? 0;\nconst soc = data.soc ?? 100;\nconst loads = [data.L1 ?? 0, data.L2 ?? 0, data.L3 ?? 0];\nconst boilerTemp = data.boilerTemp ?? 25;\nconst inverterLoad = data.inverterLoad ?? 0;\nconst sunrise = data.sunrise ?? 6;\nconst sunset = data.sunset ?? 20;\nconst hour = new Date().getHours();\n\nlet desire = 'HOLD';\n\n// === FAILSAFE ===\nif (boilerTemp > cfg.boilerTempMax) desire = 'HEAT_OFF';\nelse if (soc < cfg.minSoc) desire = 'HEAT_OFF';\nelse if (inverterLoad > cfg.inverterLoadMax) desire = 'HEAT_OFF';\nelse if (hour < sunrise || hour > sunset) desire = 'HEAT_OFF';\nelse if (batteryPower > cfg.onThreshold) desire = 'HEAT_ON';\nelse if (batteryPower < cfg.offThreshold) desire = 'HEAT_OFF';\n\n// === MANUAL OVERRIDE: FORCE ALL ON ===\nif (ctx.manualOverride) {\n    const relays = [1, 1, 1];\n    if (JSON.stringify(st.relays) !== JSON.stringify(relays)) {\n        st.relays = relays;\n        st.lastChange = now;\n        changed = true;\n    }\n} else {\n    // === NORMAL AUTO MODE ===\n    if (desire === 'HEAT_ON') {\n        // choose one relay to turn ON progressively\n        const offIndices = st.relays.map((r, i) => (r === 0 ? i : -1)).filter(i => i >= 0);\n        if (offIndices.length > 0) {\n            const iMin = offIndices.sort((a, b) => loads[a] - loads[b])[0];\n            if (now - st.lastOffTimes[iMin] > cfg.minOffTime) {\n                st.relays[iMin] = 1;\n                st.lastOnTimes[iMin] = now;\n                st.lastChange = now;\n                changed = true;\n            }\n        }\n    } else if (desire === 'HEAT_OFF') {\n        // choose one relay to turn OFF progressively\n        const onIndices = st.relays.map((r, i) => (r === 1 ? i : -1)).filter(i => i >= 0);\n        if (onIndices.length > 0) {\n            const iMax = onIndices.sort((a, b) => loads[b] - loads[a])[0];\n            if (now - st.lastOnTimes[iMax] > cfg.minOnTime) {\n                st.relays[iMax] = 0;\n                st.lastOffTimes[iMax] = now;\n                st.lastChange = now;\n                changed = true;\n            }\n        }\n    }\n}\n\n// === BUILD OUTPUT ===\nconst out = [\n    { topic: \"/Relay/0/State\", payload: st.relays[0] },\n    { topic: \"/Relay/1/State\", payload: st.relays[1] },\n    { topic: \"/Relay/2/State\", payload: st.relays[2] }\n];\n\n// === STATUS MESSAGE ===\nconst statusMsg = {\n    relays: st.relays,\n    soc,\n    boilerTemp,\n    inverterLoad,\n    manualOverride: ctx.manualOverride,\n    lastChange: new Date(st.lastChange).toLocaleTimeString()\n};\n\n// === OUTPUT CONTROL ===\nlet output = [null, null, null, null];\nif (changed) {\n    output = [out[0], out[1], out[2], statusMsg];\n    st.lastStatusTime = now;\n} else if (now - st.lastStatusTime > cfg.statusThrottle) {\n    output[3] = statusMsg;\n    st.lastStatusTime = now;\n}\n\ncontext.set('st', st);\nreturn output;",
+    "outputs": 4,
+    "noerr": 0,
+    "x": 400,
+    "y": 260,
+    "wires": [
+      ["relay0"],
+      ["relay1"],
+      ["relay2"],
+      ["status_debug", "ui_status"]
+    ]
+  },
+  {
+    "id": "victron_batt_power",
+    "type": "victron-input",
+    "z": "flow1",
+    "name": "Battery Power",
+    "service": "com.victronenergy.vebus.ttyO1",
+    "path": "/Battery/Power",
+    "x": 130,
+    "y": 80,
+    "wires": [["f1_controller"]]
+  },
+  {
+    "id": "victron_batt_soc",
+    "type": "victron-input",
+    "z": "flow1",
+    "name": "Battery SOC",
+    "service": "com.victronenergy.vebus.ttyO1",
+    "path": "/Battery/Soc",
+    "x": 130,
+    "y": 120,
+    "wires": [["f1_controller"]]
+  },
+  {
+    "id": "victron_l1",
+    "type": "victron-input",
+    "z": "flow1",
+    "name": "Load L1",
+    "service": "com.victronenergy.vebus.ttyO1",
+    "path": "/Ac/Out/L1/P",
+    "x": 130,
+    "y": 160,
+    "wires": [["f1_controller"]]
+  },
+  {
+    "id": "victron_l2",
+    "type": "victron-input",
+    "z": "flow1",
+    "name": "Load L2",
+    "service": "com.victronenergy.vebus.ttyO1",
+    "path": "/Ac/Out/L2/P",
+    "x": 130,
+    "y": 200,
+    "wires": [["f1_controller"]]
+  },
+  {
+    "id": "victron_l3",
+    "type": "victron-input",
+    "z": "flow1",
+    "name": "Load L3",
+    "service": "com.victronenergy.vebus.ttyO1",
+    "path": "/Ac/Out/L3/P",
+    "x": 130,
+    "y": 240,
+    "wires": [["f1_controller"]]
+  },
+  {
+    "id": "relay0",
+    "type": "victron-output",
+    "z": "flow1",
+    "name": "Relay L1",
+    "service": "com.victronenergy.vebus.ttyO1",
+    "path": "/Relay/0/State",
+    "x": 700,
+    "y": 80,
+    "wires": []
+  },
+  {
+    "id": "relay1",
+    "type": "victron-output",
+    "z": "flow1",
+    "name": "Relay L2",
+    "service": "com.victronenergy.vebus.ttyO1",
+    "path": "/Relay/1/State",
+    "x": 700,
+    "y": 120,
+    "wires": []
+  },
+  {
+    "id": "relay2",
+    "type": "victron-output",
+    "z": "flow1",
+    "name": "Relay L3",
+    "service": "com.victronenergy.vebus.ttyO1",
+    "path": "/Relay/2/State",
+    "x": 700,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "status_debug",
+    "type": "debug",
+    "z": "flow1",
+    "name": "Heater Status",
+    "active": true,
+    "tosidebar": true,
+    "complete": "true",
+    "x": 710,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "ui_status",
+    "type": "ui_template",
+    "z": "flow1",
+    "group": "status_group",
+    "name": "Heater Status Panel",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "format": "<div>\n  <h3>Heater Controller Status</h3>\n  <p><b>Battery SOC:</b> {{msg.soc}} %</p>\n  <p><b>Boiler Temp:</b> {{msg.boilerTemp}} °C</p>\n  <p><b>Inverter Load:</b> {{msg.inverterLoad}} W</p>\n  <p><b>Relays:</b> L1={{msg.relays[0]}}, L2={{msg.relays[1]}}, L3={{msg.relays[2]}}</p>\n  <p><b>Mode:</b> {{msg.manualOverride ? \"MANUAL (FORCE ON)\" : \"AUTO\"}}</p>\n  <p><b>Last Change:</b> {{msg.lastChange}}</p>\n</div>",
+    "storeOutMessages": true,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "x": 710,
+    "y": 260,
+    "wires": []
+  },
+  {
+    "id": "config_ui",
+    "type": "ui_form",
+    "z": "flow1",
+    "name": "Heater Config",
+    "label": "Update Config",
+    "group": "config_group",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "options": [
+      {"label":"On Threshold (W)","value":"onThreshold","type":"number"},
+      {"label":"Off Threshold (W)","value":"offThreshold","type":"number"},
+      {"label":"Min SOC (%)","value":"minSoc","type":"number"},
+      {"label":"Boiler Temp Max (°C)","value":"boilerTempMax","type":"number"},
+      {"label":"Inverter Load Max (W)","value":"inverterLoadMax","type":"number"}
+    ],
+    "x": 150,
+    "y": 340,
+    "wires": [["config_topic"]]
+  },
+  {
+    "id": "config_topic",
+    "type": "change",
+    "z": "flow1",
+    "name": "Set /Heater/Config",
+    "rules": [{"t":"set","p":"topic","pt":"msg","to":"/Heater/Config","tot":"str"}],
+    "x": 370,
+    "y": 340,
+    "wires": [["f1_controller"]]
+  },
+  {
+    "id": "manual_switch",
+    "type": "ui_switch",
+    "z": "flow1",
+    "name": "Manual Override",
+    "label": "Manual Override (Force ON)",
+    "tooltip": "Enable to force all heaters ON",
+    "group": "status_group",
+    "order": 2,
+    "topic": "/Heater/Manual",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 150,
+    "y": 400,
+    "wires": [["f1_controller"]]
+  },
+  {
+    "id": "config_group",
+    "type": "ui_group",
+    "name": "Heater Settings",
+    "tab": "config_tab",
+    "order": 1,
+    "disp": true,
+    "width": "6",
+    "collapse": false
+  },
+  {
+    "id": "config_tab",
+    "type": "ui_tab",
+    "name": "Heater Control",
+    "icon": "settings",
+    "order": 1
+  },
+  {
+    "id": "status_group",
+    "type": "ui_group",
+    "name": "Heater Status",
+    "tab": "status_tab",
+    "order": 1,
+    "disp": true,
+    "width": "6",
+    "collapse": false
+  },
+  {
+    "id": "status_tab",
+    "type": "ui_tab",
+    "name": "Heater Monitor",
+    "icon": "dashboard",
+    "order": 2
+  }
+]
