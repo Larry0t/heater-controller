@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg width="1400" height="900" viewBox="0 0 1400 900" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .bg { fill:#ffffff; }
+    .group-title { font: 700 16px/1 "Segoe UI", Roboto, Arial; fill:#1f2937; }
+    .box { fill:#f8fafc; stroke:#0f172a; stroke-width:1.6; rx:10; }
+    .input-box { fill:#e6f0ff; stroke:#1e90ff; stroke-width:1.8; }
+    .logic-box { fill:#fff7ed; stroke:#ff8c00; stroke-width:1.8; }
+    .dash-box { fill:#f5f3ff; stroke:#7c3aed; stroke-width:1.8; }
+    .output-box { fill:#ecfdf5; stroke:#10b981; stroke-width:1.8; }
+    .label { font: 14px/1 "Segoe UI", Roboto, Arial; fill:#0f172a; }
+    .small { font: 12px/1 "Segoe UI", Roboto, Arial; fill:#334155; }
+    .arrow { stroke:#0f172a; stroke-width:2; fill:none; marker-end:url(#a); }
+    .note { font: 11px/1 "Segoe UI", Roboto, Arial; fill:#475569; }
+    .title { font: 20px/1 "Segoe UI", Roboto, Arial; fill:#0f172a; font-weight:700; }
+    .divider { stroke:#e2e8f0; stroke-width:1; }
+    .badge { font:12px/1 "Segoe UI", Roboto, Arial; fill:#fff; font-weight:700; }
+    .pill { fill:#0b74ff; rx:6; ry:6; }
+  </style>
+
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="10" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0f172a"></path>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <rect x="20" y="14" width="1360" height="60" fill="#ffffff" />
+  <text x="40" y="54" class="title">Victron 3-Phase Heater Controller – Node-RED Flow</text>
+
+  <!-- INPUTS group -->
+  <text x="40" y="110" class="group-title">Inputs (Victron & Sensors)</text>
+  <rect x="40" y="120" width="360" height="300" class="box"/>
+  <!-- input items -->
+  <rect x="60" y="138" width="320" height="54" class="input-box" rx="8"/>
+  <text x="78" y="166" class="label">Battery Power (Dc/Battery/Power)</text>
+  <text x="78" y="182" class="small">→ batteryPower (W)</text>
+
+  <rect x="60" y="206" width="320" height="54" class="input-box" rx="8"/>
+  <text x="78" y="234" class="label">Battery SOC (Dc/Battery/Soc)</text>
+  <text x="78" y="250" class="small">→ soc (%)</text>
+
+  <rect x="60" y="274" width="320" height="54" class="input-box" rx="8"/>
+  <text x="78" y="302" class="label">AC Loads L1 / L2 / L3 (Ac/L?/Power)</text>
+  <text x="78" y="318" class="small">→ loads[] (W)</text>
+
+  <rect x="60" y="342" width="320" height="54" class="input-box" rx="8"/>
+  <text x="78" y="370" class="label">Boiler Temp (Boiler/Temp)</text>
+  <text x="78" y="386" class="small">→ boilerTemp (°C)</text>
+
+  <rect x="60" y="410" width="320" height="54" class="input-box" rx="8"/>
+  <text x="78" y="438" class="label">Inverter Load (Ac/Out/P)</text>
+  <text x="78" y="454" class="small">→ inverterLoad (W)</text>
+
+  <!-- DASHBOARD group -->
+  <text x="430" y="110" class="group-title">Dashboard (Config & Controls)</text>
+  <rect x="430" y="120" width="340" height="200" class="dash-box"/>
+  <text x="450" y="150" class="label">Config Form</text>
+  <text x="450" y="170" class="small">topic: /Heater/Config (object)</text>
+  <rect x="430" y="330" width="340" height="90" class="dash-box"/>
+  <text x="450" y="354" class="label">Manual Control Panel</text>
+  <text x="450" y="374" class="small">topic: /Heater/Manual (true/false)</text>
+  <rect x="430" y="430" width="340" height="90" class="dash-box"/>
+  <text x="450" y="454" class="label">Status Panel</text>
+  <text x="450" y="474" class="small">subscribes: /Heater/Status</text>
+
+  <!-- LOGIC CORE -->
+  <text x="800" y="110" class="group-title">Logic Core</text>
+  <rect x="800" y="120" width="480" height="360" class="logic-box"/>
+  <text x="820" y="150" class="label" font-weight="700">Heater Controller (Function Node)</text>
+  <text x="820" y="172" class="small">- Progressive ON/OFF (one relay per cycle)</text>
+  <text x="820" y="188" class="small">- Hysteresis (on/off thresholds)</text>
+  <text x="820" y="204" class="small">- SOC, boilerTemp, inverterLoad checks</text>
+  <text x="820" y="220" class="small">- Sunrise/Sunset time window</text>
+  <text x="820" y="236" class="small">- Manual override (force ON) + timeout</text>
+  <text x="820" y="252" class="small">- Min ON/OFF times, global cooldown</text>
+  <text x="820" y="268" class="small">- Throttled status & change-only relay outputs</text>
+
+  <!-- small config handler -->
+  <rect x="820" y="296" width="200" height="60" rx="8" class="logic-box" />
+  <text x="840" y="320" class="label">Config Request Handler</text>
+  <text x="840" y="336" class="small">replays stored config → /Heater/Config</text>
+
+  <!-- OUTPUTS group -->
+  <text x="40" y="560" class="group-title">Outputs</text>
+  <rect x="40" y="580" width="360" height="200" class="box"/>
+  <rect x="60" y="600" width="320" height="46" class="output-box" rx="8"/>
+  <text x="78" y="630" class="label">Relay L1 → /Relay/0/State (0/1)</text>
+  <rect x="60" y="654" width="320" height="46" class="output-box" rx="8"/>
+  <text x="78" y="684" class="label">Relay L2 → /Relay/1/State (0/1)</text>
+  <rect x="60" y="708" width="320" height="46" class="output-box" rx="8"/>
+  <text x="78" y="738" class="label">Relay L3 → /Relay/2/State (0/1)</text>
+
+  <rect x="440" y="580" width="340" height="160" class="output-box" rx="8"/>
+  <text x="460" y="606" class="label">Dashboard Status Output</text>
+  <text x="460" y="624" class="small">/Heater/Status → JSON status object</text>
+
+  <!-- ARROWS: Inputs -> Controller -->
+  <path d="M380,160 L800,160" class="arrow" />
+  <path d="M380,210 L800,210" class="arrow" />
+  <path d="M380,290 L800,260" class="arrow" />
+  <path d="M380,380 L820,320" class="arrow" />
+  <path d="M380,450 L820,360" class="arrow" />
+
+  <!-- DASHBOARD -> Logic arrows -->
+  <path d="M770,200 L800,200" class="arrow" />
+  <path d="M600,220 L800,240" class="arrow" />
+  <path d="M600,460 L820,420" class="arrow" />
+
+  <!-- Logic -> Config handler -->
+  <path d="M980,320 L1020,320" class="arrow" />
+
+  <!-- Logic -> Outputs arrows -->
+  <path d="M980,320 L420,640" class="arrow" />
+  <path d="M980,320 L420,700" class="arrow" />
+  <path d="M980,320 L420,760" class="arrow" />
+  <path d="M980,320 L600,640" class="arrow" />
+
+  <!-- Footnote -->
+  <rect x="800" y="700" width="560" height="150" class="box" rx="8" />
+  <text x="820" y="726" class="group-title">Notes</text>
+  <text x="820" y="748" class="note">• Relay outputs are emitted only on state change.</text>
+  <text x="820" y="766" class="note">• Status published only when changed and at least statusMinIntervalSec apart.</text>
+  <text x="820" y="784" class="note">• Manual override forces all relays ON; auto-expires after manualTimeoutSec.</text>
+  <text x="820" y="802" class="note">• Config can be updated live via /Heater/Config.</text>
+</svg>

@@ -1,0 +1,60 @@
+[
+  {
+    "id": "heater-control-panel",
+    "type": "ui_template",
+    "z": "heater-controller-flow",
+    "group": "heater-control-group",
+    "name": "Heater Control Panel",
+    "order": 3,
+    "width": 0,
+    "height": 0,
+    "format": "<div class=\"p-2\">\n  <style>\n    .btn-control {\n      display: inline-block;\n      margin: 6px;\n      padding: 10px 16px;\n      font-size: 15px;\n      font-weight: bold;\n      border: none;\n      border-radius: 10px;\n      color: white;\n      cursor: pointer;\n      transition: all 0.25s ease;\n    }\n    .btn-on { background-color: #28a745; }\n    .btn-on:hover { background-color: #218838; }\n    .btn-off { background-color: #dc3545; }\n    .btn-off:hover { background-color: #c82333; }\n    .btn-update { background-color: #007bff; }\n    .btn-update:hover { background-color: #0069d9; }\n  </style>\n  <div>\n    <h4>Heater Manual & Config Controls</h4>\n    <button id=\"manualToggle\" class=\"btn-control btn-off\">Manual: OFF</button>\n    <button id=\"updateConfig\" class=\"btn-control btn-update\">Resend Config</button>\n  </div>\n  <script>\n    (function(scope) {\n      let manual = false;\n      document.getElementById('manualToggle').onclick = function() {\n        manual = !manual;\n        const btn = document.getElementById('manualToggle');\n        btn.className = 'btn-control ' + (manual ? 'btn-on' : 'btn-off');\n        btn.innerText = manual ? 'Manual: ON' : 'Manual: OFF';\n        scope.send({ topic: '/Heater/Manual', payload: manual });\n      };\n      document.getElementById('updateConfig').onclick = function() {\n        scope.send({ topic: '/Heater/Config/Request', payload: true });\n      };\n    })(scope);\n  </script>\n</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 340,
+    "y": 400,
+    "wires": [
+      [
+        "heater-config-handler"
+      ]
+    ]
+  },
+  {
+    "id": "heater-config-handler",
+    "type": "function",
+    "z": "heater-controller-flow",
+    "name": "Heater Config Request Handler",
+    "func": "// This node handles config resend requests from dashboard.\nconst ctx = context.get('state') || {};\n\nif (msg.topic === '/Heater/Config/Request' && ctx.config) {\n    node.status({ fill: 'blue', shape: 'dot', text: 'Re-sent config' });\n    return { topic: '/Heater/Config', payload: ctx.config };\n}\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 620,
+    "y": 400,
+    "wires": [
+      [
+        "heater-controller-function"
+      ]
+    ]
+  },
+  {
+    "id": "heater-control-group",
+    "type": "ui_group",
+    "name": "Heater Control",
+    "tab": "heater-dashboard-tab",
+    "order": 1,
+    "disp": true,
+    "width": "8",
+    "collapse": false
+  },
+  {
+    "id": "heater-dashboard-tab",
+    "type": "ui_tab",
+    "name": "Heater Control",
+    "icon": "fa-fire",
+    "order": 1
+  }
+]

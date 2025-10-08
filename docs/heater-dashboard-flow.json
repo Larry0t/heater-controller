@@ -1,0 +1,159 @@
+[
+  {
+    "id": "heater-controller-function",
+    "type": "function",
+    "z": "heater-controller-flow",
+    "name": "Heater Controller Function",
+    "func": "// Node-RED Function Node: Heater Controller\nconst defaultConfig = {\n    onThreshold: 1000,\n    offThreshold: -1000,\n    minSoc: 70,\n    boilerTempMax: 40,\n    inverterLoadMax: 5000,\n    minOnSec: 60,\n    minOffSec: 60,\n    minAnyChangeSec: 10,\n    statusMinIntervalSec: 5,\n    manualTimeoutSec: 600,\n    sunriseTime: \"06:00\",\n    sunsetTime: \"20:00\"\n};\n\nconst ctx = context.get(\"state\") || {\n    relays: [0, 0, 0],\n    loads: [0, 0, 0],\n    batteryPower: 0,\n    soc: 0,\n    boilerTemp: 0,\n    inverterLoad: 0,\n    manualOverride: false,\n    config: { ...defaultConfig },\n    lastChange: [0, 0, 0],\n    lastAnyChange: 0,\n    lastStatusSent: 0,\n    manualActivatedAt: 0\n};\n\nif (msg.topic === \"/Heater/Config\" && typeof msg.payload === \"object\") {\n    ctx.config = { ...ctx.config, ...msg.payload };\n    node.status({ fill: \"green\", shape: \"dot\", text: \"Config updated\" });\n    context.set(\"state\", ctx);\n    return null;\n}\n\nif (msg.topic === \"/Heater/Manual\") {\n    ctx.manualOverride = !!msg.payload;\n    ctx.manualActivatedAt = ctx.manualOverride ? Date.now() : 0;\n    node.status({ fill: ctx.manualOverride ? \"yellow\" : \"green\", shape: \"dot\", text: ctx.manualOverride ? \"MANUAL: FORCE ON\" : \"AUTO\" });\n    context.set(\"state\", ctx);\n    return null;\n}\n\nswitch (msg.topic) {\n    case \"/Dc/Battery/Power\": ctx.batteryPower = msg.payload; break;\n    case \"/Dc/Battery/Soc\": ctx.soc = msg.payload; break;\n    case \"/Ac/L1/Power\": ctx.loads[0] = msg.payload; break;\n    case \"/Ac/L2/Power\": ctx.loads[1] = msg.payload; break;\n    case \"/Ac/L3/Power\": ctx.loads[2] = msg.payload; break;\n    case \"/Boiler/Temp\": ctx.boilerTemp = msg.payload; break;\n    case \"/Inverter/Load\": ctx.inverterLoad = msg.payload; break;\n}\ncontext.set(\"state\", ctx);\n\nfunction withinTimeWindow() {\n    const now = new Date();\n    const [sh, sm] = ctx.config.sunriseTime.split(\":\").map(Number);\n    const [eh, em] = ctx.config.sunsetTime.split(\":\").map(Number);\n    const start = new Date(now); start.setHours(sh, sm, 0, 0);\n    const end = new Date(now); end.setHours(eh, em, 0, 0);\n    return now >= start && now <= end;\n}\nfunction canTurnOn(i) {\n    const now = Date.now() / 1000;\n    return (now - ctx.lastChange[i]) >= ctx.config.minOffSec;\n}\nfunction canTurnOff(i) {\n    const now = Date.now() / 1000;\n    return (now - ctx.lastChange[i]) >= ctx.config.minOnSec;\n}\n\nif (ctx.manualOverride && ctx.config.manualTimeoutSec > 0) {\n    if ((Date.now() - ctx.manualActivatedAt) / 1000 > ctx.config.manualTimeoutSec) {\n        ctx.manualOverride = false;\n        ctx.manualActivatedAt = 0;\n        node.status({ fill: \"green\", shape: \"dot\", text: \"AUTO (manual timeout)\" });\n    }\n}\n\nlet changed = false;\nconst nowSec = Date.now() / 1000;\nconst relays = [...ctx.relays];\nconst mode = ctx.manualOverride ? \"MANUAL: FORCE ON\" : \"AUTO\";\nif (nowSec - ctx.lastAnyChange < ctx.config.minAnyChangeSec) return null;\n\nif (ctx.manualOverride) {\n    const newRelays = [1, 1, 1];\n    if (JSON.stringify(ctx.relays) !== JSON.stringify(newRelays)) {\n        ctx.relays = newRelays;\n        ctx.lastAnyChange = nowSec;\n        ctx.lastChange = [nowSec, nowSec, nowSec];\n        changed = true;\n    }\n} else {\n    if (!withinTimeWindow() || ctx.soc < ctx.config.minSoc || ctx.boilerTemp >= ctx.config.boilerTempMax || ctx.inverterLoad >= ctx.config.inverterLoadMax) {\n        let onIndexes = ctx.relays.map((v, i) => v ? i : -1).filter(i => i >= 0);\n        if (onIndexes.length > 0) {\n            const offIndex = onIndexes.sort((a, b) => ctx.loads[b] - ctx.loads[a])[0];\n            if (canTurnOff(offIndex)) {\n                ctx.relays[offIndex] = 0;\n                ctx.lastChange[offIndex] = nowSec;\n                ctx.lastAnyChange = nowSec;\n                changed = true;\n            }\n        }\n    } else {\n        if (ctx.batteryPower > ctx.config.onThreshold) {\n            let offIndexes = ctx.relays.map((v, i) => v ? -1 : i).filter(i => i >= 0);\n            if (offIndexes.length > 0) {\n                const onIndex = offIndexes.sort((a, b) => ctx.loads[a] - ctx.loads[b])[0];\n                if (canTurnOn(onIndex)) {\n                    ctx.relays[onIndex] = 1;\n                    ctx.lastChange[onIndex] = nowSec;\n                    ctx.lastAnyChange = nowSec;\n                    changed = true;\n                }\n            }\n        } else if (ctx.batteryPower < ctx.config.offThreshold) {\n            let onIndexes = ctx.relays.map((v, i) => v ? i : -1).filter(i => i >= 0);\n            if (onIndexes.length > 0) {\n                const offIndex = onIndexes.sort((a, b) => ctx.loads[b] - ctx.loads[a])[0];\n                if (canTurnOff(offIndex)) {\n                    ctx.relays[offIndex] = 0;\n                    ctx.lastChange[offIndex] = nowSec;\n                    ctx.lastAnyChange = nowSec;\n                    changed = true;\n                }\n            }\n        }\n    }\n}\n\nconst outputs = [null, null, null, null];\nif (changed) {\n    for (let i = 0; i < 3; i++) {\n        if (ctx.relays[i] !== relays[i]) {\n            outputs[i] = { topic: `/Relay/${i}/State`, payload: ctx.relays[i] };\n        }\n    }\n    ctx.lastAnyChange = nowSec;\n}\nif (changed || (nowSec - ctx.lastStatusSent) >= ctx.config.statusMinIntervalSec) {\n    const statusMsg = {\n        topic: \"/Heater/Status\",\n        payload: {\n            relays: ctx.relays,\n            soc: ctx.soc,\n            batteryPower: ctx.batteryPower,\n            boilerTemp: ctx.boilerTemp,\n            inverterLoad: ctx.inverterLoad,\n            manualOverride: ctx.manualOverride,\n            mode,\n            lastChange: new Date().toISOString()\n        }\n    };\n    ctx.lastStatusSent = nowSec;\n    outputs[3] = statusMsg;\n}\ncontext.set(\"state\", ctx);\nreturn outputs;",
+    "outputs": 4,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 720,
+    "y": 260,
+    "wires": [
+      [],
+      [],
+      [],
+      [
+        "heater-status-panel"
+      ]
+    ]
+  },
+  {
+    "id": "heater-config-form",
+    "type": "ui_form",
+    "z": "heater-controller-flow",
+    "name": "Heater Config Form",
+    "label": "Heater Controller Configuration",
+    "group": "heater-control-group",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "options": [
+      { "label": "PV Surplus ON Threshold (W)", "value": "onThreshold", "type": "number" },
+      { "label": "Battery Discharge OFF Threshold (W)", "value": "offThreshold", "type": "number" },
+      { "label": "Minimum Battery SOC (%)", "value": "minSoc", "type": "number" },
+      { "label": "Maximum Boiler Temperature (°C)", "value": "boilerTempMax", "type": "number" },
+      { "label": "Maximum Inverter Load (W)", "value": "inverterLoadMax", "type": "number" },
+      { "label": "Minimum Relay ON Time (sec)", "value": "minOnSec", "type": "number" },
+      { "label": "Minimum Relay OFF Time (sec)", "value": "minOffSec", "type": "number" },
+      { "label": "Cooldown Between Relay Changes (sec)", "value": "minAnyChangeSec", "type": "number" },
+      { "label": "Status Update Interval (sec)", "value": "statusMinIntervalSec", "type": "number" },
+      { "label": "Manual Override Timeout (sec)", "value": "manualTimeoutSec", "type": "number" },
+      { "label": "Heating Start Time (HH:mm)", "value": "sunriseTime", "type": "text" },
+      { "label": "Heating End Time (HH:mm)", "value": "sunsetTime", "type": "text" }
+    ],
+    "formValue": {
+      "onThreshold": 1000,
+      "offThreshold": -1000,
+      "minSoc": 70,
+      "boilerTempMax": 40,
+      "inverterLoadMax": 5000,
+      "minOnSec": 60,
+      "minOffSec": 60,
+      "minAnyChangeSec": 10,
+      "statusMinIntervalSec": 5,
+      "manualTimeoutSec": 600,
+      "sunriseTime": "06:00",
+      "sunsetTime": "20:00"
+    },
+    "payload": "",
+    "submit": "Update Config",
+    "topic": "/Heater/Config",
+    "x": 360,
+    "y": 180,
+    "wires": [
+      [
+        "heater-controller-function"
+      ]
+    ]
+  },
+  {
+    "id": "heater-status-panel",
+    "type": "ui_template",
+    "z": "heater-controller-flow",
+    "group": "heater-status-group",
+    "name": "Heater Status Panel",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "format": "<div class='p-2'>\n  <h4>Heater Controller Status</h4>\n  <div>\n    <div id='relayL1' class='relay-box'>L1</div>\n    <div id='relayL2' class='relay-box'>L2</div>\n    <div id='relayL3' class='relay-box'>L3</div>\n  </div>\n  <div class='status-grid'>\n    <div class='status-item'>SOC: <b><span id='soc'>--</span>%</b></div>\n    <div class='status-item'>Battery Power: <b><span id='batteryPower'>--</span>W</b></div>\n    <div class='status-item'>Boiler Temp: <b><span id='boilerTemp'>--</span>°C</b></div>\n    <div class='status-item'>Inverter Load: <b><span id='inverterLoad'>--</span>W</b></div>\n    <div class='status-item'>Mode: <b><span id='mode'>--</span></b></div>\n    <div class='status-item'>Updated: <b><span id='updated'>--</span></b></div>\n  </div>\n  <style>\n    .relay-box { display:inline-block;width:70px;height:70px;border-radius:12px;margin:6px;text-align:center;font-weight:bold;line-height:70px;color:white;transition:all 0.3s; }\n    .relay-on{background:#28a745;}.relay-off{background:#6c757d;}\n    .status-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-top:10px;}\n    .status-item{background:#f8f9fa;border-radius:8px;padding:6px 10px;font-size:14px;}\n  </style>\n  <script>\n  (function(scope){\n    scope.$watch('msg',function(msg){\n      if(!msg||!msg.payload)return;\n      const d=msg.payload;\n      const relays=d.relays||[0,0,0];\n      document.getElementById('relayL1').className='relay-box '+(relays[0]?'relay-on':'relay-off');\n      document.getElementById('relayL2').className='relay-box '+(relays[1]?'relay-on':'relay-off');\n      document.getElementById('relayL3').className='relay-box '+(relays[2]?'relay-on':'relay-off');\n      document.getElementById('soc').innerText=d.soc?.toFixed(1)||'--';\n      document.getElementById('batteryPower').innerText=d.batteryPower?.toFixed(0)||'--';\n      document.getElementById('boilerTemp').innerText=d.boilerTemp?.toFixed(1)||'--';\n      document.getElementById('inverterLoad').innerText=d.inverterLoad?.toFixed(0)||'--';\n      document.getElementById('mode').innerText=d.mode||'--';\n      document.getElementById('updated').innerText=new Date().toLocaleTimeString();\n    });\n  })(scope);\n  </script>\n</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 1080,
+    "y": 260,
+    "wires": []
+  },
+  {
+    "id": "heater-control-panel",
+    "type": "ui_template",
+    "z": "heater-controller-flow",
+    "group": "heater-control-group",
+    "name": "Heater Control Panel",
+    "order": 3,
+    "width": 0,
+    "height": 0,
+    "format": "<div class='p-2'>\n  <h4>Manual & Config Controls</h4>\n  <button id='manualToggle' class='btn-control btn-off'>Manual: OFF</button>\n  <button id='updateConfig' class='btn-control btn-update'>Resend Config</button>\n  <style>\n    .btn-control{margin:6px;padding:10px 16px;font-size:15px;font-weight:bold;border:none;border-radius:10px;color:white;cursor:pointer;transition:all .25s;}\n    .btn-on{background:#28a745;}.btn-on:hover{background:#218838;}\n    .btn-off{background:#dc3545;}.btn-off:hover{background:#c82333;}\n    .btn-update{background:#007bff;}.btn-update:hover{background:#0069d9;}\n  </style>\n  <script>\n    (function(scope){\n      let manual=false;\n      document.getElementById('manualToggle').onclick=function(){\n        manual=!manual;\n        const b=document.getElementById('manualToggle');\n        b.className='btn-control '+(manual?'btn-on':'btn-off');\n        b.innerText=manual?'Manual: ON':'Manual: OFF';\n        scope.send({topic:'/Heater/Manual',payload:manual});\n      };\n      document.getElementById('updateConfig').onclick=function(){scope.send({topic:'/Heater/Config/Request',payload:true});};\n    })(scope);\n  </script>\n</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 370,
+    "y": 380,
+    "wires": [
+      [
+        "heater-config-handler"
+      ]
+    ]
+  },
+  {
+    "id": "heater-config-handler",
+    "type": "function",
+    "z": "heater-controller-flow",
+    "name": "Heater Config Request Handler",
+    "func": "const ctx = context.get('state') || {};\nif (msg.topic === '/Heater/Config/Request' && ctx.config) {\n    node.status({ fill: 'blue', shape: 'dot', text: 'Re-sent config' });\n    return { topic: '/Heater/Config', payload: ctx.config };\n}\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 640,
+    "y": 380,
+    "wires": [
+      [
+        "heater-controller-function"
+      ]
+    ]
+  },
+  {
+    "id": "heater-control-group",
+    "type": "ui_group",
+    "name": "Heater Control",
+    "tab": "heater-dashboard-tab",
+    "order": 1,
+    "disp": true,
+    "width": "8",
+    "collapse": false
+  },
+  {
+    "id": "heater-status-group",
+    "type": "ui_group",
+    "name": "Heater Status",
+    "tab": "heater-dashboard-tab",
+    "order": 2,
+    "disp": true,
+    "width": "8",
+    "collapse": false
+  },
+  {
+    "id": "heater-dashboard-tab",
+    "type": "ui_tab",
+    "name": "Heater Control",
+    "icon": "fa-fire",
+    "order": 1
+  }
+]
